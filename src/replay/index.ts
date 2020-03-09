@@ -74,6 +74,7 @@ export class Replayer {
       blockClass: 'rr-block',
       liveMode: false,
       insertStyleRules: [],
+      triggerFocus: true,
     };
     this.config = Object.assign({}, defaultConfig, config);
 
@@ -408,7 +409,11 @@ export class Replayer {
           ) {
             parent.insertBefore(target, previous.nextSibling);
           } else if (next && next.parentNode) {
-            parent.insertBefore(target, next);
+            // making sure the parent contains the reference nodes
+            // before we insert target before next.
+            parent.contains(next)
+              ? parent.insertBefore(target, next)
+              : parent.insertBefore(target, null);
           } else {
             parent.appendChild(target);
           }
@@ -494,6 +499,7 @@ export class Replayer {
           type: d.type,
           target,
         });
+        const { triggerFocus } = this.config;
         switch (d.type) {
           case MouseInteractions.Blur:
             if (((target as Node) as HTMLElement).blur) {
@@ -501,7 +507,7 @@ export class Replayer {
             }
             break;
           case MouseInteractions.Focus:
-            if (((target as Node) as HTMLElement).focus) {
+            if (triggerFocus && ((target as Node) as HTMLElement).focus) {
               ((target as Node) as HTMLElement).focus({
                 preventScroll: true,
               });
@@ -608,6 +614,28 @@ export class Replayer {
         }
         break;
       }
+      case IncrementalSource.StyleSheetRule: {
+        const target = mirror.getNode(d.id);
+        if (!target) {
+          return this.debugNodeNotFound(d, d.id);
+        }
+
+        const styleEl = (target as Node) as HTMLStyleElement;
+        const styleSheet = <CSSStyleSheet>styleEl.sheet;
+
+        if (d.adds) {
+          d.adds.forEach(({ rule, index }) => {
+            styleSheet.insertRule(rule, index);
+          });
+        }
+
+        if (d.removes) {
+          d.removes.forEach(({ index }) => {
+            styleSheet.deleteRule(index);
+          });
+        }
+        break;
+      }
       default:
     }
   }
@@ -659,7 +687,9 @@ export class Replayer {
       });
     let currentEl: Element | null = el;
     while (currentEl) {
-      currentEl.classList.add(':hover');
+      if (currentEl.classList) {
+        currentEl.classList.add(':hover');
+      }
       currentEl = currentEl.parentElement;
     }
   }
